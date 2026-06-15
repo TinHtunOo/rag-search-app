@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import OpenAI from "openai";
+import { GoogleGenerativeAI, TaskType } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import mammoth from "mammoth";
@@ -9,7 +9,13 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabaseStorage = createClient(url, serviceKey || anonKey);
 const supabase = createClient(url, anonKey);
-const openai = new OpenAI();
+
+// Replace OpenAI with Gemini
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+
+const embeddingModel = genAI.getGenerativeModel({
+  model: "gemini-embedding-2",
+});
 
 function safeDecodeURIComponent(str: string): string {
   try {
@@ -88,18 +94,12 @@ export async function POST(req: Request) {
       const msg = storageError.message || "Unknown storage error";
       if (msg.includes("row-level security") || msg.includes("RLS")) {
         return NextResponse.json(
-          {
-            success: false,
-            error: `Storage RLS error: ${msg}. Ensure SUPABASE_SERVICE_ROLE_KEY is set.`,
-          },
+          { success: false, error: `Storage RLS error: ${msg}` },
           { status: 500 },
         );
       }
       return NextResponse.json(
-        {
-          success: false,
-          error: `Failed to store file: ${msg}`,
-        },
+        { success: false, error: `Failed to store file: ${msg}` },
         { status: 500 },
       );
     }
@@ -113,32 +113,33 @@ export async function POST(req: Request) {
     const text = await extractTextFromFile(file);
     if (!text || text.trim().length === 0) {
       return NextResponse.json(
-        {
-          error: "Could not extract text from file",
-        },
+        { error: "Could not extract text from file" },
         { status: 400 },
       );
     }
 
     // Split text into chunks
-    // Chunk size of 800 characters with 100-character overlap ensures
-    // we don't lose context at chunk boundaries
     const textSplitter = new RecursiveCharacterTextSplitter({
       chunkSize: 800,
       chunkOverlap: 100,
     });
     const chunks = await textSplitter.splitText(text);
 
-    // Process each chunk: generate embedding and store in database
+    // Process each chunk with Gemini embeddings
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
 
-      // Generate embedding using OpenAI
-      // This converts the text chunk into a 1536-dimensional vector
-      const emb = await openai.embeddings.create({
-        model: "text-embedding-3-small",
-        input: chunk,
-      });
+      // Generate embedding using Gemini (768-dimensional)
+      const result = await embeddingModel.embedContent({
+        content: {
+          role: "user",
+          parts: [{ text: chunk }],
+        },
+        taskType: TaskType.RETRIEVAL_DOCUMENT,
+        outputDimensionality: 768, // <--- Forces 768 dimensions
+      } as any);
+
+      const embedding = result.embedding.values;
 
       // Store chunk with embedding in database
       const { error } = await supabase.from("documents").insert({
@@ -155,15 +156,12 @@ export async function POST(req: Request) {
           file_path: filePath,
           file_url: urlData.publicUrl,
         },
-        embedding: JSON.stringify(emb.data[0].embedding),
+        embedding: JSON.stringify(embedding),
       });
 
       if (error) {
         return NextResponse.json(
-          {
-            success: false,
-            error: error.message,
-          },
+          { success: false, error: error.message },
           { status: 500 },
         );
       }
@@ -179,10 +177,7 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     return NextResponse.json(
-      {
-        success: false,
-        error: error.message || "Failed to process file",
-      },
+      { success: false, error: error.message || "Failed to process file" },
       { status: 500 },
     );
   }
