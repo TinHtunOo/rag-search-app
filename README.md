@@ -57,7 +57,7 @@ A full-stack AI-powered Retrieval-Augmented Generation (RAG) search application 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/rag-search-app.git
+git https://github.com/TinHtunOo/rag-search-app.git
 cd rag-search-app
 ```
 
@@ -125,8 +125,6 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 GEMINI_API_KEY=your_google_ai_studio_api_key
 ```
-
-> Never commit `.env.local` to version control.
 
 ### 5. Run the Development Server
 
