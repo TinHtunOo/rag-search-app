@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     const context = results?.map((r: any) => r.content).join("\n---\n") || "";
 
     // Generate answer using Gemini
-    const prompt = `You are a helpful assistant. Use the provided context to answer questions. If the answer is not in the context, say you do not know.
+    const prompt = `You are a helpful assistant and act like a human talking. Use the provided context to answer questions. If the answer is not in the context, say you do not know.
 
 Context: ${context}
 
